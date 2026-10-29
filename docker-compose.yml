@@ -1,0 +1,63 @@
+# Chạy toàn bộ hệ thống: SQL Server + nạp dữ liệu + API + Web
+#   cp .env.example .env   (đổi mật khẩu/secret)
+#   docker compose up -d --build
+# Web: http://localhost:8080   Admin: http://localhost:8080/admin   API: http://localhost:4000/api/health
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD}
+    ports: ["1433:1433"]
+    volumes: [mssqldata:/var/opt/mssql]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Chạy một lần: tạo CSDL + 40 câu chuyện (chỉ chạy khi CSDL chưa có để không xóa dữ liệu thật)
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on: { db: { condition: service_healthy } }
+    environment: { MSSQL_SA_PASSWORD: "${DB_PASSWORD}" }
+    volumes: ["./database:/sql:ro"]
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        S="/opt/mssql-tools18/bin/sqlcmd -C -S db -U sa -P $$MSSQL_SA_PASSWORD"
+        if [ "$$($$S -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.databases WHERE name='MySonAudioGuide'")" = "1" ]; then
+          echo "CSDL đã tồn tại - bỏ qua nạp dữ liệu"; exit 0; fi
+        sed '1s/^\xEF\xBB\xBF//' /sql/MySonAudioGuide.sql > /tmp/init.sql
+        $$S -b -f 65001 -i /tmp/init.sql
+    restart: "no"
+
+  api:
+    build: ./backend
+    depends_on: { db-init: { condition: service_completed_successfully } }
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DB_SERVER: db
+      DB_NAME: MySonAudioGuide
+      DB_USER: sa
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_ENCRYPT: "false"
+      DB_TRUST_CERT: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      VISITOR_JWT_SECRET: ${VISITOR_JWT_SECRET}
+      UPLOAD_DIR: /app/uploads
+    ports: ["4000:4000"]
+    volumes: [uploads:/app/uploads]
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    depends_on: [api]
+    ports: ["8080:80"]
+    restart: unless-stopped
+
+volumes:
+  mssqldata:
+  uploads:

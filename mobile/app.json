@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Mỹ Sơn Audio Guide",
+    "slug": "myson-audio-guide",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "vn.edu.myson.audioguide",
+      "infoPlist": { "NSCameraUsageDescription": "Quét mã QR trên vé hoặc tại điểm tham quan", "NSLocationWhenInUseUsageDescription": "Tự động phát thuyết minh khi bạn đến gần điểm tham quan" } },
+    "android": { "package": "vn.edu.myson.audioguide", "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"], "usesCleartextTraffic": true },
+    "plugins": [["expo-camera", { "cameraPermission": "Quét mã QR trên vé hoặc tại điểm tham quan" }], ["expo-location", { "locationWhenInUsePermission": "Tự động phát thuyết minh khi bạn đến gần điểm tham quan" }]],
+    "extra": { "apiUrl": "http://10.0.2.2:4000" }
+  }
+}

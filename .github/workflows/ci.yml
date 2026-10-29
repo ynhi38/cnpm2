@@ -1,0 +1,56 @@
+name: CI
+on:
+  push: { branches: [main, develop] }
+  pull_request:
+
+jobs:
+  database:
+    name: Kiểm tra script SQL Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chạy MySonAudioGuide.sql trên SQL Server 2022
+        run: |
+          docker run -d --name sql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Ci@Passw0rd123' mcr.microsoft.com/mssql/server:2022-latest
+          for i in $(seq 1 30); do
+            docker exec sql /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Ci@Passw0rd123' -Q "SELECT 1" >/dev/null 2>&1 && break; sleep 3; done
+          sed '1s/^\xEF\xBB\xBF//' database/MySonAudioGuide.sql > /tmp/init.sql
+          docker cp /tmp/init.sql sql:/tmp/init.sql
+          docker exec sql /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Ci@Passw0rd123' -b -f 65001 -i /tmp/init.sql
+          docker exec sql /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Ci@Passw0rd123' -d MySonAudioGuide -b \
+            -Q "IF (SELECT COUNT(*) FROM Stories) <> 40 OR (SELECT COUNT(*) FROM StoryTranslations) <> 120 RAISERROR('Dữ liệu seed thiếu',16,1)"
+
+  backend:
+    name: Backend (test + docker build)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: node scripts/check.js || true   # chỉ nạp module; kết nối DB sẽ báo lỗi trên CI là bình thường
+      - run: docker build -t myson-api .
+
+  web:
+    name: Web (build)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+  mobile:
+    name: Mobile (bundle Expo)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: mobile } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund
+      - run: npx expo export --platform android
